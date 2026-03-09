@@ -8,15 +8,38 @@ import json
 
 app = Flask(__name__)
 
-# 이스터 에그: 친구 이름 입력 시 정해진 답
+# 1. 상단에 이스터 에그 정의 (기존 내용 유지)
 EASTER_EGGS = {
-    "지유림": "퀸",
+    "지유림": "퀸.",
     "구민영": "제주도좋다",
     "강지은": "260312 국가시험 합격",
     "임예린": "감히 입에 올릴 존합이 아니다!",
     "박지영": "바퀴벌레. 이젠 무섭지않아.",
 }
 
+@app.route('/keyboard', methods=['POST'])
+def chat_response():
+    data = request.get_json()
+    utterance = data.get('userRequest', {}).get('utterance', '').replace(" ", "") # 공백 제거로 정확도 높임
+
+    # 2. 'in'을 활용한 이스터 에그 검사 루프
+    response_text = None
+    
+    for name, message in EASTER_EGGS.items():
+        if name in utterance:  # 입력된 문장에 이름이 포함되어 있다면!
+            response_text = message
+            break  # 하나라도 찾으면 검사 중단
+
+    # 3. 이스터 에그를 못 찾았을 때만 식단 로직 실행
+    if not response_text:
+        # 여기에 기존 식단(get_jbnu_menu) 로직을 넣으시면 됩니다.
+        # 예시: response_text = get_jbnu_menu(target_date)
+        response_text = "이해하지 못한 말이에요. 식단이 궁금하시면 '오늘 식단'이라고 말해주세요!"
+
+    return jsonify({
+        "version": "2.0",
+        "template": {"outputs": [{"simpleText": {"text": response_text}}]}
+    })
 def get_jbnu_menu(target_date):
     # 한국 시간(KST) 기준 오늘 날짜 설정
     korea_now = datetime.utcnow() + timedelta(hours=9)
