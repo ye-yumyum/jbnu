@@ -24,7 +24,10 @@ EASTER_EGGS = {
     "이승빈": "힘내! 사랑해💕",
     "강지은": "260312 국가시험 합격",
     "임예린": "감히 입에 올릴 존함이 아니다!",
-    "박지영": "바퀴벌레, 이젠 무섭지않아.",
+    "박지영": "바퀴벌레, 이젠 무섭지않아."
+    "박선영": "21학번의 보물!"
+    "이세연": "이세연이세연?"
+    "이승주": "21학번 최고 갓생러",
 }
 
 MENU_CACHE = {}
@@ -155,6 +158,20 @@ def chat_response():
                 user_date = (now + timedelta(days=2)).strftime("%Y-%m-%d")
             elif "어제" in text:
                 user_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            # 요일 (월요일, 화요일, ..., 일요일 / 다음 주 월요일 등)
+            if not user_date:
+                WEEKDAY_NAMES = [
+                    "월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"
+                ]
+                is_next_week = "다음주" in text or "다음 주" in text
+                for i, name in enumerate(WEEKDAY_NAMES):
+                    if name in text:
+                        days_diff = i - now.weekday()
+                        if is_next_week:
+                            days_diff += 7
+                        user_date = (now + timedelta(days=days_diff)).strftime("%Y-%m-%d")
+                        break
 
             # YYYY년MM월DD일
             if not user_date:
