@@ -127,26 +127,68 @@ def chat_response():
         # [날짜 판독 로직]
         user_date = None
         now = datetime.utcnow() + timedelta(hours=9)
-        params = data.get("action", {}).get("params", {})
+
+        # 1) Kakao 액션 파라미터에서 날짜 우선 사용 (sys.date, date 등)
+        params = data.get("action", {}).get("params", {}) or {}
         raw_date = params.get("date") or params.get("sys.date")
 
         if raw_date and "{{" not in str(raw_date):
-            if isinstance(raw_date, str) and raw_date.strip().startswith("{"):
-                try: user_date = json.loads(raw_date).get("date")
-                except: user_date = None
-            else: user_date = raw_date
+            try:
+                # Kakao가 JSON 문자열로 줄 수도 있음: {"date":"2026-03-10"}
+                if isinstance(raw_date, str) and raw_date.strip().startswith("{"):
+                    raw_date = json.loads(raw_date).get("date")
+                if isinstance(raw_date, str):
+                    raw_date = raw_date.split("T")[0]
+                parsed = datetime.strptime(str(raw_date), "%Y-%m-%d")
+                user_date = parsed.strftime("%Y-%m-%d")
+            except Exception:
+                user_date = None
 
+        # 2) 일반 문장(내일/모레/요일/날짜표기)에서 추출
+        if not user_date:
+            text = utterance_stripped
+
+            # 상대 날짜
+            if "내일" in text:
+                user_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            elif "모레" in text:
+                user_date = (now + timedelta(days=2)).strftime("%Y-%m-%d")
+            elif "어제" in text:
+                user_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            # YYYY년MM월DD일
+            if not user_date:
+                m = re.search(r"(\d{4})년(\d{1,2})월(\d{1,2})일", text)
+                if m:
+                    y, mo, d = map(int, m.groups())
+                    try:
+                        user_date = datetime(y, mo, d).strftime("%Y-%m-%d")
+                    except Exception:
+                        user_date = None
+
+            # MM월DD일 (연도 없으면 올해로)
+            if not user_date:
+                m = re.search(r"(\d{1,2})월(\d{1,2})일", text)
+                if m:
+                    mo, d = map(int, m.groups())
+                    try:
+                        user_date = datetime(now.year, mo, d).strftime("%Y-%m-%d")
+                    except Exception:
+                        user_date = None
+
+            # DD일 (월/연도 없으면 오늘 기준 같은 달)
+            if not user_date:
+                m = re.search(r"(\d{1,2})일", text)
+                if m:
+                    d = int(m.group(1))
+                    try:
+                        user_date = datetime(now.year, now.month, d).strftime("%Y-%m-%d")
+                    except Exception:
+                        user_date = None
+
+        # 3) 아무 것도 못 찾으면 오늘
         if not user_date or "{{" in str(user_date):
-            # ... (기존 정규표현식 날짜 판독 로직 생략되지 않도록 유지) ...
-            match_full = re.search(r"(\d{4})년(\d{1,2})월(\d{1,2})일", utterance_stripped)
-            if match_full:
-                y, m, d = map(int, match_full.groups())
-                try: user_date = datetime(y, m, d).strftime("%Y-%m-%d")
-                except: user_date = now.strftime("%Y-%m-%d")
-            # (중략 - 기존의 3월13일, 13일, 요일 판독 등 모든 판독 로직 그대로 포함)
-            # [이곳에 기존 코드의 판독 로직이 모두 들어있다고 가정합니다]
-            if not user_date: # 판독 실패시 오늘로 설정
-                user_date = now.strftime("%Y-%m-%d")
+            user_date = now.strftime("%Y-%m-%d")
 
         # --- [하이브리드 콜백 처리 핵심] ---
         result_container = {"menu": None}
