@@ -12,6 +12,11 @@ import requests   # 추가: 콜백 전송용
 
 app = Flask(__name__)
 
+# Render 헬스 체크용 엔드포인트
+@app.route("/health", methods=["GET"])
+def health():
+    return "OK", 200
+
 # --- [기존 이스터 에그 및 캐시 설정 유지] ---
 EASTER_EGGS = {
     "지유림": "퀸.",
@@ -190,5 +195,6 @@ def chat_response():
         })
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "8080"))
+    # Render에서 부여하는 PORT(예: 10000)를 우선 사용
+    port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
