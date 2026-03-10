@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import urllib.request
 import ssl
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
 import json
@@ -11,6 +10,9 @@ import threading  # 추가: 백그라운드 작업용
 import requests   # 추가: 콜백 전송용
 
 app = Flask(__name__)
+
+# 콜백/외부요청은 세션 재사용(약간의 성능 이점)
+REQUESTS_SESSION = requests.Session()
 
 # Render 헬스 체크용 엔드포인트
 @app.route("/health", methods=["GET"])
@@ -28,14 +30,6 @@ EASTER_EGGS = {
     "박선영": "21학번의 보물!",
     "이세연": "이세연이세연?",
     "이승주": "21학번 최고 갓생러",
-    "김익수": "최고존엄goat과대",
-    "손유태": "최고존엄goat과대의 꼬붕",
-    "유희윤": "희융희융",
-    "조성원": "성원에 감사드립니다",
-    "지연선": "움쪽chu💋",
-    "이주연": "인생의 주연은 나 🎵",
-    "이원빈": "에토남 💪🏻",
-    "조인영": "조인하실래요?",
 }
 
 MENU_CACHE = {}
@@ -54,6 +48,9 @@ def _cache_set(key: str, value: str, ttl_seconds: int):
 
 # --- [기존 식단 가져오기 함수 유지] ---
 def get_jbnu_menu(target_date):
+    # 콜드스타트 지연을 줄이기 위해(최초 요청이 늦어질 때가 많음) 필요 시점에만 import
+    from bs4 import BeautifulSoup
+
     korea_now = datetime.utcnow() + timedelta(hours=9)
     today_str = korea_now.strftime("%Y-%m-%d")
 
@@ -233,7 +230,7 @@ def chat_response():
             finish_event.set()
 
         # 백그라운드에서 식단 가져오기 시작
-        threading.Thread(target=fetch_menu_task).start()
+        threading.Thread(target=fetch_menu_task, daemon=True).start()
 
         # 최대 3.5초 대기
         is_completed = finish_event.wait(timeout=3.5)
@@ -253,14 +250,23 @@ def chat_response():
                     "template": {"outputs": [{"simpleText": {"text": f"🍴 전북대 식단 안내\n\n{result_container['menu']}"}}]}
                 }
                 if callback_url:
-                    requests.post(callback_url, json=callback_payload)
+                    # 카카오 callbackUrl은 짧은 시간 내 응답용이므로, 실패해도 본 요청 흐름은 유지
+                    try:
+                        REQUESTS_SESSION.post(callback_url, json=callback_payload, timeout=3.0)
+                    except Exception:
+                        pass
 
-            threading.Thread(target=send_callback_after_finish).start()
+            threading.Thread(target=send_callback_after_finish, daemon=True).start()
 
             return jsonify({
                 "version": "2.0",
                 "useCallback": True,
-                "data": {"text": "학식 정보를 불러오고 있습니다. 잠시만 기다려 주세요! 🍛"}
+                # 카카오 스킬 응답은 template이 있어야 화면에 표시됩니다.
+                "template": {
+                    "outputs": [
+                        {"simpleText": {"text": "학식 정보를 불러오고 있습니다. 잠시만 기다려 주세요! 🍛"}}
+                    ]
+                }
             })
 
     except Exception as e:
@@ -273,3 +279,4 @@ if __name__ == "__main__":
     # Render에서 부여하는 PORT(예: 10000)를 우선 사용
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
+
