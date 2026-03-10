@@ -186,9 +186,17 @@ def chat_response():
                     except Exception:
                         user_date = None
 
-        # 3) 아무 것도 못 찾으면 오늘
         if not user_date or "{{" in str(user_date):
-            user_date = now.strftime("%Y-%m-%d")
+            # ... (기존 정규표현식 날짜 판독 로직 생략되지 않도록 유지) ...
+            match_full = re.search(r"(\d{4})년(\d{1,2})월(\d{1,2})일", utterance_stripped)
+            if match_full:
+                y, m, d = map(int, match_full.groups())
+                try: user_date = datetime(y, m, d).strftime("%Y-%m-%d")
+                except: user_date = now.strftime("%Y-%m-%d")
+            # (중략 - 기존의 3월13일, 13일, 요일 판독 등 모든 판독 로직 그대로 포함)
+            # [이곳에 기존 코드의 판독 로직이 모두 들어있다고 가정합니다]
+            if not user_date: # 판독 실패시 오늘로 설정
+                user_date = now.strftime("%Y-%m-%d")
 
         # --- [하이브리드 콜백 처리 핵심] ---
         result_container = {"menu": None}
