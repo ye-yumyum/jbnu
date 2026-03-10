@@ -220,54 +220,19 @@ def chat_response():
             if not user_date: # 판독 실패시 오늘로 설정
                 user_date = now.strftime("%Y-%m-%d")
 
-        # --- [하이브리드 콜백 처리 핵심] ---
-        result_container = {"menu": None}
-        finish_event = threading.Event()
+        # --- [단순 동기 응답 모드] ---
+        # Kakao 스킬 타임아웃(2~3초) 안에 확실히 응답하기 위해
+        # 콜백/스레드 대신 한 번에 메뉴를 가져와 바로 응답합니다.
+        menu_text = get_jbnu_menu(user_date)
 
-        def fetch_menu_task():
-            # 실제 식단을 가져와서 컨테이너에 담고 신호를 보냄
-            result_container["menu"] = get_jbnu_menu(user_date)
-            finish_event.set()
-
-        # 백그라운드에서 식단 가져오기 시작
-        threading.Thread(target=fetch_menu_task, daemon=True).start()
-
-        # 최대 3.5초 대기
-        is_completed = finish_event.wait(timeout=3.5)
-
-        if is_completed:
-            # 1. 3.5초 이내 완료됨 -> 바로 응답
-            return jsonify({
-                "version": "2.0",
-                "template": {"outputs": [{"simpleText": {"text": f"🍴 전북대 식단 안내\n\n{result_container['menu']}"}}]}
-            })
-        else:
-            # 2. 3.5초 초과됨 -> 콜백 모드 전환
-            def send_callback_after_finish():
-                finish_event.wait() # 작업이 끝날 때까지 기다림
-                callback_payload = {
-                    "version": "2.0",
-                    "template": {"outputs": [{"simpleText": {"text": f"🍴 전북대 식단 안내\n\n{result_container['menu']}"}}]}
-                }
-                if callback_url:
-                    # 카카오 callbackUrl은 짧은 시간 내 응답용이므로, 실패해도 본 요청 흐름은 유지
-                    try:
-                        REQUESTS_SESSION.post(callback_url, json=callback_payload, timeout=3.0)
-                    except Exception:
-                        pass
-
-            threading.Thread(target=send_callback_after_finish, daemon=True).start()
-
-            return jsonify({
-                "version": "2.0",
-                "useCallback": True,
-                # 카카오 스킬 응답은 template이 있어야 화면에 표시됩니다.
-                "template": {
-                    "outputs": [
-                        {"simpleText": {"text": "학식 정보를 불러오고 있습니다. 잠시만 기다려 주세요! 🍛"}}
-                    ]
-                }
-            })
+        return jsonify({
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                    {"simpleText": {"text": f"🍴 전북대 식단 안내\n\n{menu_text}"}}
+                ]
+            }
+        })
 
     except Exception as e:
         return jsonify({
@@ -279,4 +244,3 @@ if __name__ == "__main__":
     # Render에서 부여하는 PORT(예: 10000)를 우선 사용
     port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
-
