@@ -1,45 +1,48 @@
 from flask import Flask, request, jsonify
-import urllib.request
-import ssl
 from datetime import datetime, timedelta
 import os
+import requests
 from bs4 import BeautifulSoup
+import urllib3
+
+# SSL 경고 문구 제거 (안전함)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# --- 깨우기 경로 ---
 @app.route("/health", methods=["GET"])
 @app.route("/keep-alive", methods=["GET"])
 def health():
     return "OK", 200
 
-# --- 식단 크롤링 함수 ---
 def get_jbnu_menu(target_date):
     try:
-        # SSL 설정
-        context = ssl._create_unverified_context()
         url = f"https://likehome.jbnu.ac.kr/home/main/inner.php?sMenu=B7300&date={target_date}"
         
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, context=context, timeout=5) as response:
-            html = response.read().decode("utf-8", errors="ignore")
+        # requests를 사용하여 전북대 서버의 까다로운 보안 통과 시도
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        # verify=False를 통해 SSL 핸드쉐이크 에러 방지
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
+        response.encoding = 'utf-8'
+        html = response.text
 
         soup = BeautifulSoup(html, "html.parser")
         tables = soup.find_all("table")
         
         if not tables:
-            return f"📅 {target_date}\n해당 날짜의 식단표 테이블을 찾을 수 없습니다."
+            return f"📅 {target_date}\n식단표를 찾을 수 없습니다. (학교 서버 점검 중일 수 있습니다)"
 
         rows = tables[0].find_all("tr")
-        
-        # 요일 계산 (0:월, 1:화, ..., 4:금, 5:토, 6:일)
         date_obj = datetime.strptime(target_date, "%Y-%m-%d")
         weekday = date_obj.weekday()
         
         if weekday > 4:
             return f"📅 {target_date}\n주말은 식단을 운영하지 않습니다."
 
-        col_idx = weekday + 1 # 월요일이 1번 열
+        col_idx = weekday + 1
         
         def extract(row_idx):
             try:
@@ -55,24 +58,20 @@ def get_jbnu_menu(target_date):
         lunch = extract(2)
         dinner = extract(3)
 
-        return f"📅 날짜: {target_date}\n\n🍳 [아침]\n{breakfast}\n\n🍱 [점심]\n{lunch}\n\n🌙 [저녁]\n{dinner}"
+        return f"🍴 전북대 식단 ({target_date})\n\n🍳 [아침]\n{breakfast}\n\n🍱 [점심]\n{lunch}\n\n🌙 [저녁]\n{dinner}"
 
     except Exception as e:
-        return f"식단 정보를 가져오는 중 오류 발생: {str(e)}"
+        return f"죄송합니다. 학교 서버 연결 실패: {str(e)}"
 
-# --- 카카오톡 응답 로직 ---
 @app.route("/keyboard", methods=["POST"])
 def chat_response():
     try:
         content = request.get_json()
-        # 카카오톡에서 보낸 발화(말) 추출
         utterance = content.get("userRequest", {}).get("utterance", "")
         
-        # 기본 날짜 설정 (한국 시간 오늘)
         now = datetime.utcnow() + timedelta(hours=9)
         target_date = now.strftime("%Y-%m-%d")
 
-        # 간단한 날짜 판별
         if "내일" in utterance:
             target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
         elif "모레" in utterance:
@@ -82,16 +81,12 @@ def chat_response():
 
         return jsonify({
             "version": "2.0",
-            "template": {
-                "outputs": [{"simpleText": {"text": result_text}}]
-            }
+            "template": {"outputs": [{"simpleText": {"text": result_text}}]}
         })
     except Exception as e:
         return jsonify({
             "version": "2.0",
-            "template": {
-                "outputs": [{"simpleText": {"text": f"서버 내부 오류가 발생했습니다: {str(e)}"}}]
-            }
+            "template": {"outputs": [{"simpleText": {"text": f"서버 오류: {str(e)}"}}] }
         })
 
 if __name__ == "__main__":
