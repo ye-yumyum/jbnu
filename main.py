@@ -4,9 +4,20 @@ import os
 import requests
 from bs4 import BeautifulSoup
 import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
 
-# SSL 경고 문구 제거 (안전함)
+# SSL 경고 제거
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# --- 보안 수준을 강제로 낮추는 설정 (핵심) ---
+class LegacyAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        context = create_urllib3_context()
+        # 최근 서버에서 금지된 오래된 보안 방식(TLS 1.0 등)을 허용합니다.
+        context.set_ciphers('DEFAULT@SECURITY=1')
+        kwargs['ssl_context'] = context
+        return super(LegacyAdapter, self).init_poolmanager(*args, **kwargs)
 
 app = Flask(__name__)
 
@@ -19,13 +30,15 @@ def get_jbnu_menu(target_date):
     try:
         url = f"https://likehome.jbnu.ac.kr/home/main/inner.php?sMenu=B7300&date={target_date}"
         
-        # requests를 사용하여 전북대 서버의 까다로운 보안 통과 시도
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         
-        # verify=False를 통해 SSL 핸드쉐이크 에러 방지
-        response = requests.get(url, headers=headers, verify=False, timeout=10)
+        # 세션을 만들고 보안을 낮춘 어댑터 연결
+        session = requests.Session()
+        session.mount("https://", LegacyAdapter())
+        
+        response = session.get(url, headers=headers, verify=False, timeout=10)
         response.encoding = 'utf-8'
         html = response.text
 
@@ -33,7 +46,7 @@ def get_jbnu_menu(target_date):
         tables = soup.find_all("table")
         
         if not tables:
-            return f"📅 {target_date}\n식단표를 찾을 수 없습니다. (학교 서버 점검 중일 수 있습니다)"
+            return f"📅 {target_date}\n식단표를 찾을 수 없습니다."
 
         rows = tables[0].find_all("tr")
         date_obj = datetime.strptime(target_date, "%Y-%m-%d")
@@ -61,7 +74,7 @@ def get_jbnu_menu(target_date):
         return f"🍴 전북대 식단 ({target_date})\n\n🍳 [아침]\n{breakfast}\n\n🍱 [점심]\n{lunch}\n\n🌙 [저녁]\n{dinner}"
 
     except Exception as e:
-        return f"죄송합니다. 학교 서버 연결 실패: {str(e)}"
+        return f"학교 서버 보안 문제로 접속 실패: {str(e)}"
 
 @app.route("/keyboard", methods=["POST"])
 def chat_response():
@@ -86,7 +99,7 @@ def chat_response():
     except Exception as e:
         return jsonify({
             "version": "2.0",
-            "template": {"outputs": [{"simpleText": {"text": f"서버 오류: {str(e)}"}}] }
+            "template": {"outputs": [{"simpleText": {"text": f"오류 발생: {str(e)}"}}] }
         })
 
 if __name__ == "__main__":
