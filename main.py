@@ -174,9 +174,8 @@ def keep_alive():
     now = datetime.utcnow() + timedelta(hours=9)
     return f"I am awake! (Server Time: {now.strftime('%Y-%m-%d %H:%M:%S')})", 200
 
-# --- 실행 블록 (항상 마지막에 한 번만!) ---
-
+# 기존 if __name__ == "__main__": 블록을 아래처럼 교체
 if __name__ == "__main__":
-    # 포트 번호는 Render/Railway 등의 환경 변수를 따르되 기본값은 10000
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # Render는 PORT 환경변수를 자동으로 주지만, 
+    # 가끔 충돌이 나면 0.0.0.0에 포트 10000으로 강제 고정하는 게 안전합니다.
+    app.run(host="0.0.0.0", port=10000)
