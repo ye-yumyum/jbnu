@@ -41,7 +41,7 @@ def get_jbnu_menu(target_date):
         session = requests.Session()
         session.mount("https://", LegacyAdapter())
         
-        response = session.get(url, headers=headers, verify=False, timeout=10)
+        response = session.get(url, headers=headers, verify=False, timeout=4)
         response.encoding = 'utf-8'
         
         soup = BeautifulSoup(response.text, "html.parser")
