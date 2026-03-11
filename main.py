@@ -72,4 +72,48 @@ def get_jbnu_menu(target_date):
                     return menu if len(menu) > 1 else "미운영"
                 return "미운영"
             except:
-                return
+                return "미운영"
+
+        breakfast = extract(1)
+        lunch = extract(2)
+        dinner = extract(3)
+
+        return f"🍴 전북대 식단 ({target_date})\n\n🍳 [아침]\n{breakfast}\n\n🍱 [점심]\n{lunch}\n\n🌙 [저녁]\n{dinner}"
+
+    except Exception as e:
+        return f"연결 실패: {str(e)}"
+
+@app.route("/keyboard", methods=["POST"])
+def chat_response():
+    try:
+        content = request.get_json()
+        utterance = content.get("userRequest", {}).get("utterance", "")
+        
+        # 한국 시간 기준 오늘 날짜 설정
+        now = datetime.utcnow() + timedelta(hours=9)
+        target_date = now.strftime("%Y-%m-%d")
+
+        if "내일" in utterance:
+            target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        elif "모레" in utterance:
+            target_date = (now + timedelta(days=2)).strftime("%Y-%m-%d")
+
+        result_text = get_jbnu_menu(target_date)
+
+        return jsonify({
+            "version": "2.0",
+            "template": {
+                "outputs": [{"simpleText": {"text": result_text}}]
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "version": "2.0",
+            "template": {
+                "outputs": [{"simpleText": {"text": f"오류 발생: {str(e)}"}}]
+            }
+        })
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
