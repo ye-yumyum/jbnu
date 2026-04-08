@@ -29,7 +29,7 @@ def get_jbnu_menu(target_date):
         session = requests.Session()
         session.mount("https://", LegacyAdapter())
         
-        response = session.get(url, headers=headers, verify=False, timeout=4.5)
+        response = session.get(url, headers=headers, verify=False, timeout=5)
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, "html.parser")
         tables = soup.find_all("table")
@@ -40,7 +40,7 @@ def get_jbnu_menu(target_date):
         rows = tables[0].find_all("tr")
         # 요일 숫자 (0:월 ~ 6:일)
         weekday = datetime.strptime(target_date, "%Y-%m-%d").weekday()
-        col_idx = weekday + 1 # 식단표 테이블의 열 인덱스
+        col_idx = weekday + 1 
         
         def extract(row_idx):
             try:
@@ -52,7 +52,6 @@ def get_jbnu_menu(target_date):
             except:
                 return "미운영"
 
-        # 주말 체크 로직 삭제 -> 그냥 긁어서 보여줌
         return f"🍴 전북대 식단 ({target_date})\n\n🍳 [아침]\n{extract(1)}\n\n🍱 [점심]\n{extract(2)}\n\n🌙 [저녁]\n{extract(3)}"
     except Exception as e:
         return f"연결 실패: {str(e)}"
@@ -67,10 +66,10 @@ def chat_response():
     try:
         content = request.get_json()
         utterance = content.get("userRequest", {}).get("utterance", "")
+        # 한국 시간 설정
         now = datetime.utcnow() + timedelta(hours=9)
         target_date_obj = now
 
-        # 날짜 판별 로직 (순서: 오늘/내일/모레 -> 요일)
         if "모레" in utterance:
             target_date_obj = now + timedelta(days=2)
         elif "내일" in utterance:
